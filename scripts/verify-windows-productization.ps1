@@ -257,6 +257,7 @@ Start-Sleep -Seconds 16
     "-NodeCommand", $nodePath,
     "-SkipNpmInstall",
     "-SkipBuild",
+    "-CreateCliShim",
     "-JsonOutput"
   )
   if (Test-Path -LiteralPath $npmCliPath) {
@@ -283,6 +284,22 @@ URL=https://example.invalid/personal-shortcut
   Assert-True (-not [bool]$installJson.started) "No-start installation must report started=false."
   Assert-True (-not [bool]$installJson.healthReady) "No-start installation must report healthReady=false."
   Assert-True ([string]::IsNullOrWhiteSpace([string]$installJson.publicUrl)) "Local no-start installation must not report a public URL."
+  $cliShimPath = Join-Path $testRoot "bin\cx-codex.cmd"
+  $externalShimContent = "@echo off`r`nrem external command shim`r`n"
+  [System.IO.File]::WriteAllText($cliShimPath, $externalShimContent, [System.Text.Encoding]::ASCII)
+  $externalShimHash = (Get-FileHash -LiteralPath $cliShimPath -Algorithm SHA256).Hash
+  $externalShimResult = Invoke-CapturedPowerShell `
+    -ScriptPath $installScript `
+    -Arguments $installerArgs `
+    -CaptureRoot $testRoot `
+    -Label "install-external-shim"
+  Assert-True ($externalShimResult.ExitCode -eq 0) "Installer must succeed when preserving an external CLI shim."
+  $externalShimJson = ConvertFrom-SingleJsonLine -Text $externalShimResult.Stdout -Label "External shim installation"
+  Assert-True (@($externalShimJson.warnings | Where-Object { $_.code -eq "CLI_SHIM_PRESERVED" }).Count -eq 1) "Installer must warn when preserving an external CLI shim."
+  $preservedShimHash = (Get-FileHash -LiteralPath $cliShimPath -Algorithm SHA256).Hash
+  Assert-True ($preservedShimHash -ceq $externalShimHash) "Installer must not overwrite an external CLI shim."
+  $managedShimContent = "@echo off`r`nrem CX-Codex managed CLI shim`r`n`"$nodePath`" `"$(Join-Path $repoRoot 'dist-cli\index.js')`" %*`r`n"
+  Set-Content -LiteralPath $cliShimPath -Value $managedShimContent -Encoding ASCII
   $expectedManagementShortcuts = @(
     (Join-Path $env:CX_CODEX_MANAGEMENT_SHORTCUT_ROOT "Desktop\CX-Codex 管理中心 (17420).url"),
     (Join-Path $env:CX_CODEX_MANAGEMENT_SHORTCUT_ROOT "Programs\CX-Codex 管理中心.url")
@@ -331,6 +348,9 @@ URL=https://example.invalid/personal-shortcut
   Assert-True ([bool]$upgradedConfig.tunnel) "Upgrade must preserve the existing remote-access enabled state."
   Assert-True ($upgradedConfig.remoteAccessMode -eq "quick") "Upgrade must preserve the selected remote-access mode."
   Assert-True ($upgradedConfig.futureOption -eq "preserve-me") "Upgrade must preserve unknown future config fields."
+  $updatedShimContent = Get-Content -LiteralPath $cliShimPath -Raw -Encoding ASCII
+  Assert-True ($updatedShimContent -match "rem CX-Codex managed CLI shim") "Upgrade must retain the managed CLI shim marker."
+  Assert-True ($updatedShimContent.Contains((Join-Path $repoRoot "dist-cli\index.js"))) "Upgrade must update a managed CLI shim."
   $originalPassword = $null
   Write-Host "productization: stable install JSON passed"
 
@@ -360,8 +380,8 @@ URL=https://example.invalid/personal-shortcut
   }
   Assert-True (Test-Path -LiteralPath $shortcutConflictPath) "Uninstaller must preserve a shortcut it does not own."
   Assert-True `
-    (@($preserveJson.warnings).Count -eq 0) `
-    "Preserving a shortcut owned by another application must not emit an uninstall failure warning."
+    (@($preserveJson.warnings | Where-Object { $_.code -ne "CLI_SHIM_PRESERVED" }).Count -eq 0) `
+    "Preserving resources owned by another application must not emit an uninstall failure warning."
   Assert-True (Test-Path -LiteralPath (Join-Path $testRoot "state\config.json")) "User data must be preserved by default."
   Write-Host "productization: preserving uninstall passed"
 

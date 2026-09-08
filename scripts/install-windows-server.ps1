@@ -479,13 +479,31 @@ function Create-CliShimFile {
     New-Item -ItemType Directory -Path $shimDir -Force | Out-Null
   }
 
+  if (Test-Path -LiteralPath $TargetShimPath) {
+    $existingShimContent = Get-Content -LiteralPath $TargetShimPath -Raw -Encoding ASCII
+    $managedTarget = Join-Path $RepoRoot "dist-cli\index.js"
+    $normalizedExisting = $existingShimContent.Replace('/', '\')
+    $normalizedTarget = $managedTarget.Replace('/', '\')
+    $isManagedShim =
+      $normalizedExisting.Contains("rem CX-Codex managed CLI shim") -and
+      $normalizedExisting.IndexOf($normalizedTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    if (-not $isManagedShim) {
+      Write-InstallerWarning `
+        -Code "CLI_SHIM_PRESERVED" `
+        -Message "Preserved existing CLI shim because it is not owned by this CX-Codex installation: $TargetShimPath"
+      return $false
+    }
+  }
+
   $shimContent = @"
 @echo off
+rem CX-Codex managed CLI shim
 setlocal
 "$NodePath" "$RepoRoot\dist-cli\index.js" %*
 "@
 
   Set-Content -LiteralPath $TargetShimPath -Value $shimContent -Encoding ASCII
+  return $true
 }
 
 function Create-ManagementShortcuts {
@@ -1110,7 +1128,7 @@ Move-Item -LiteralPath $configTempPath -Destination $ConfigPath -Force
 Create-LauncherFile -TargetLauncherPath $LauncherPath -NodePath $nodeExecutable -RepoRoot $repoRoot -TargetConfigPath $ConfigPath
 $cliShimPath = Join-Path (Split-Path -Parent $LauncherPath) "cx-codex.cmd"
 if ($CreateCliShim) {
-  Create-CliShimFile -TargetShimPath $cliShimPath -NodePath $nodeExecutable -RepoRoot $repoRoot
+  $cliShimCreated = Create-CliShimFile -TargetShimPath $cliShimPath -NodePath $nodeExecutable -RepoRoot $repoRoot
 }
 $managementShortcutPaths = @(Create-ManagementShortcuts -TargetPort $Port)
 
@@ -1224,7 +1242,7 @@ if (-not $JsonOutput) {
   Write-InstallerMessage "Install complete."
   Write-InstallerMessage "Config:   $ConfigPath"
   Write-InstallerMessage "Launcher: $LauncherPath"
-  if ($CreateCliShim) {
+  if ($CreateCliShim -and $cliShimCreated) {
     Write-InstallerMessage "CLI shim: $cliShimPath"
   }
   foreach ($shortcutPath in $managementShortcutPaths) {
@@ -1299,7 +1317,7 @@ if ($JsonOutput) {
       [ordered]@{ health = $false; auth = $false; websocketAuth = $false }
     }
     configPath = $ConfigPath
-    cliShimPath = if ($CreateCliShim) { $cliShimPath } else { "" }
+    cliShimPath = if ($CreateCliShim -and $cliShimCreated) { $cliShimPath } else { "" }
     managementUrl = "http://127.0.0.1:$Port/local-setup"
     managementShortcuts = @($managementShortcutPaths)
     logsPath = $logDir
