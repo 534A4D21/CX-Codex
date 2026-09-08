@@ -482,11 +482,17 @@ function Create-CliShimFile {
   if (Test-Path -LiteralPath $TargetShimPath) {
     $existingShimContent = [System.IO.File]::ReadAllText($TargetShimPath, [System.Text.Encoding]::ASCII)
     $managedTarget = Join-Path $RepoRoot "dist-cli\index.js"
-    $normalizedExisting = $existingShimContent.Replace('/', '\')
-    $normalizedTarget = $managedTarget.Replace('/', '\')
-    $isManagedShim =
-      $normalizedExisting.Contains("rem CX-Codex managed CLI shim") -and
-      $normalizedExisting.IndexOf(('"' + $normalizedTarget + '"'), [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    $targetMatch = [regex]::Match($existingShimContent, '(?m)^"[^"\r\n]+"\s+"(?<target>[^"\r\n]+)"\s+%\*')
+    $isManagedShim = $false
+    if ($existingShimContent.Contains("rem CX-Codex managed CLI shim") -and $targetMatch.Success) {
+      try {
+        $shimTarget = $targetMatch.Groups["target"].Value
+        $isManagedShim = [System.IO.Path]::IsPathRooted($shimTarget) -and
+          [string]::Equals([System.IO.Path]::GetFullPath($shimTarget), [System.IO.Path]::GetFullPath($managedTarget), [System.StringComparison]::OrdinalIgnoreCase)
+      } catch {
+        $isManagedShim = $false
+      }
+    }
     if (-not $isManagedShim) {
       Write-InstallerWarning `
         -Code "CLI_SHIM_PRESERVED" `

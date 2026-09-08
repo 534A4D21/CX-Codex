@@ -397,11 +397,17 @@ Remove-ManagedItem -Path $resolvedLauncherPath -Label "launcher"
 if (Test-Path -LiteralPath $resolvedCliShimPath) {
   $shimText = [System.IO.File]::ReadAllText($resolvedCliShimPath, [System.Text.Encoding]::ASCII)
   $managedIndexPath = Join-Path $resolvedInstallDir "dist-cli\index.js"
-  $normalizedShim = $shimText.Replace('/', '\')
-  $normalizedTarget = $managedIndexPath.Replace('/', '\')
-  $isManagedShim =
-    $normalizedShim.Contains("rem CX-Codex managed CLI shim") -and
-    $normalizedShim.IndexOf(('"' + $normalizedTarget + '"'), [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+  $targetMatch = [regex]::Match($shimText, '(?m)^"[^"\r\n]+"\s+"(?<target>[^"\r\n]+)"\s+%\*')
+  $isManagedShim = $false
+  if ($shimText.Contains("rem CX-Codex managed CLI shim") -and $targetMatch.Success) {
+    try {
+      $shimTarget = $targetMatch.Groups["target"].Value
+      $isManagedShim = [System.IO.Path]::IsPathRooted($shimTarget) -and
+        [string]::Equals([System.IO.Path]::GetFullPath($shimTarget), $managedIndexPath, [System.StringComparison]::OrdinalIgnoreCase)
+    } catch {
+      $isManagedShim = $false
+    }
+  }
   if ($isManagedShim) {
     Remove-ManagedItem -Path $resolvedCliShimPath -Label "CLI shim"
   } else {

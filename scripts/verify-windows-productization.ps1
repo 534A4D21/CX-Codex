@@ -412,7 +412,9 @@ URL=https://example.invalid/personal-shortcut
   Set-Content -LiteralPath (Join-Path $secondInstallDir "marker.txt") -Value "managed program"
   Set-Content -LiteralPath $managedCloudflaredPath -Value "managed cloudflared"
   $secondShimPath = Join-Path $managedBinDir "cx-codex.cmd"
-  Set-Content -LiteralPath $secondShimPath -Encoding ASCII -Value "@echo off`r`nrem CX-Codex managed CLI shim`r`n`"$nodePath`" `"$(Join-Path $secondInstallDir 'dist-cli\index.js')`" %*"
+  $shortTestRoot = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($testRoot).ShortPath
+  $shortShimTarget = Join-Path $shortTestRoot "program-remove-data[managed]\dist-cli\index.js"
+  Set-Content -LiteralPath $secondShimPath -Encoding ASCII -Value "@echo off`r`nrem CX-Codex managed CLI shim`r`n`"$nodePath`" `"$shortShimTarget`" %*"
   [ordered]@{
     port = 17421
     cloudflaredCommand = $managedCloudflaredPath
@@ -438,7 +440,7 @@ URL=https://example.invalid/personal-shortcut
   Assert-True (-not (Test-Path -LiteralPath $secondInstallDir)) "Full uninstall must remove the managed program directory."
   Assert-True (-not (Test-Path -LiteralPath $secondStateDir)) "Full uninstall must remove CX-Codex user data when requested."
   Assert-True (-not (Test-Path -LiteralPath $managedCloudflaredPath)) "Full uninstall must remove the managed cloudflared binary when requested."
-  Assert-True (-not (Test-Path -LiteralPath $secondShimPath)) "Full uninstall must remove its marked CLI shim even when the install path contains brackets."
+  Assert-True (-not (Test-Path -LiteralPath $secondShimPath)) "Full uninstall must remove its marked CLI shim with short paths and brackets. $($removeDataResult.Stderr)"
   Write-Host "productization: full uninstall passed"
 
   $uninstallFailureResult = Invoke-CapturedPowerShell `
