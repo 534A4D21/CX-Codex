@@ -395,9 +395,14 @@ $script:UninstallStage = "remove_program_files"
 Remove-ManagedItem -Path $resolvedServerPidPath -Label "server PID marker"
 Remove-ManagedItem -Path $resolvedLauncherPath -Label "launcher"
 if (Test-Path -LiteralPath $resolvedCliShimPath) {
-  $shimText = Get-Content -Raw -Encoding ASCII -LiteralPath $resolvedCliShimPath
+  $shimText = [System.IO.File]::ReadAllText($resolvedCliShimPath, [System.Text.Encoding]::ASCII)
   $managedIndexPath = Join-Path $resolvedInstallDir "dist-cli\index.js"
-  if ($shimText -like "*$managedIndexPath*") {
+  $normalizedShim = $shimText.Replace('/', '\')
+  $normalizedTarget = $managedIndexPath.Replace('/', '\')
+  $isManagedShim =
+    $normalizedShim.Contains("rem CX-Codex managed CLI shim") -and
+    $normalizedShim.IndexOf(('"' + $normalizedTarget + '"'), [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+  if ($isManagedShim) {
     Remove-ManagedItem -Path $resolvedCliShimPath -Label "CLI shim"
   } else {
     $script:PreservedItems.Add("cli-shim:$resolvedCliShimPath") | Out-Null

@@ -480,13 +480,13 @@ function Create-CliShimFile {
   }
 
   if (Test-Path -LiteralPath $TargetShimPath) {
-    $existingShimContent = Get-Content -LiteralPath $TargetShimPath -Raw -Encoding ASCII
+    $existingShimContent = [System.IO.File]::ReadAllText($TargetShimPath, [System.Text.Encoding]::ASCII)
     $managedTarget = Join-Path $RepoRoot "dist-cli\index.js"
     $normalizedExisting = $existingShimContent.Replace('/', '\')
     $normalizedTarget = $managedTarget.Replace('/', '\')
     $isManagedShim =
       $normalizedExisting.Contains("rem CX-Codex managed CLI shim") -and
-      $normalizedExisting.IndexOf($normalizedTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+      $normalizedExisting.IndexOf(('"' + $normalizedTarget + '"'), [System.StringComparison]::OrdinalIgnoreCase) -ge 0
     if (-not $isManagedShim) {
       Write-InstallerWarning `
         -Code "CLI_SHIM_PRESERVED" `

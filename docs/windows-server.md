@@ -80,6 +80,8 @@ The script writes:
 
 With the optional shim, the installed CLI service commands are available as `cx-codex service status`, `cx-codex service restart`, and the other commands shown by `cx-codex service --help`. The default installation does not create this command or install an npm global package.
 
+Re-run with `-CreateCliShim` to refresh a shim owned by the same installation. Existing unmarked commands (including empty files) are preserved with a `CLI_SHIM_PRESERVED` warning. Uninstall removes only a shim with the CX-Codex ownership marker and the matching CLI target. If the command directory is not already on your `PATH`, invoke the `.cmd` file by its full path.
+
 By default the installer writes `tunnel: false` and `open: false`, which is usually the right choice for Windows server usage.
 
 ## 4. Health checks
